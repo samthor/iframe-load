@@ -4,19 +4,40 @@
 
 <script type="module">
 
-  const pagesToLoad = ['frame1.html', 'frame2.html'];
+  const pagesToLoad = ['message.html', 'frame1.html', 'frame2.html'];
 
   import {Loader} from '../iframe-loader.js';
 
+  const portForFrame = new WeakMap();
+
   const TestLoader = class extends Loader {
-    static async unload() {
+    async unload(frame) {
       console.info('delaying unload by 1s');
       await new Promise((r) => window.setTimeout(r, 1000));
     }
 
-    static async prepare() {
-      console.info('delaying loading by 1.5s');
-      await new Promise((r) => window.setTimeout(r, 1500));
+    async prepare(frame) {
+      return new Promise((resolve) => {
+        const handler = (ev) => {
+          if (ev === null) {
+            resolve(null);  // used to cleanup
+          } else if (ev.source === frame.contentWindow) {
+            resolve(ev.data);
+          } else {
+            return false;  // not our message
+          }
+          window.removeEventListener('message', handler);
+        };
+        window.addEventListener('message', handler);
+        frame.addEventListener('load', () => {
+          // After ~messageDelay, assume nothing is coming.
+          window.setTimeout(() => handler(null), 1000);
+        });
+      });
+    }
+
+    ready(frame, href, payload) {
+
     }
   };
 
@@ -27,7 +48,8 @@
     const loader = new TestLoader(container);
     document.body.append(container);
 
-    const prefix = local ? '.' : 'http://127.0.0.1:9000';
+    const prefix = (local ? location.origin : 'http://127.0.0.1:9000') + location.pathname;
+    console.info(prefix);
 
     let n = -1;
     const button = Object.assign(document.createElement('button'), {
@@ -35,9 +57,18 @@
       tabIndex: '-1',
       onclick() {
         n = (n + 1) % pagesToLoad.length;
-        loader.load(`${prefix}/${pagesToLoad[n]}`).then((frame) => {
-          if (frame) {
-            console.info('got active frame', frame);
+        const u = new URL('./' + pagesToLoad[n], prefix);
+
+        loader.load(u.toString()).then((port) => {
+          if (port === undefined) {
+            return;
+          }
+          if (port !== undefined) {
+            console.info('got active port', port);
+            if (port) {
+              port.postMessage({'hello': 123});
+              portForFrame.add()
+            }
           }
         });
       },

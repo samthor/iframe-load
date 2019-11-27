@@ -1,0 +1,11 @@
+<script type="module">
+  if (window.parent !== window) {
+    const channel = new MessageChannel();
+    window.parent.postMessage(channel.port1, '*', [channel.port1]);
+    channel.port2.onmessage = (ev) => {
+      console.info('client got message', ev.data);
+    };
+  }
+</script>
+
+Message channel

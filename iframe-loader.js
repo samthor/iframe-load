@@ -17,10 +17,6 @@ export class Loader {
     this._previousFrameUnload = Promise.resolve();
 
     this._container.appendChild(this._activeFrame);
-
-    this._container.addEventListener('focusin', (e) => {
-      console.warn('container focus');
-    }, {capture: true})
   }
 
   /**
@@ -59,6 +55,10 @@ export class Loader {
     // does nothing by default
   }
 
+  ready(frame, href, payload) {
+    
+  }
+
   get isLoading() {
     return this._previousFrame !== null;
   }
@@ -82,7 +82,7 @@ export class Loader {
    * Load a new frame with the given URL.
    *
    * @param {?string} href
-   * @return {!Promise<void>}
+   * @return {!Promise<*>}
    */
   async load(href) {
     if (this._previousFrame) {
@@ -108,9 +108,10 @@ export class Loader {
     this._activeFrame = frame;
     this._activeHref = href;
 
+    const framePrepare = this.constructor.prepare(frame, href);
+
     const preempted = await new Promise((resolve, reject) => {
       const localUnload = this._previousFrameUnload;
-      const framePrepare = this.constructor.prepare(frame, href);
       let loaded = false;
 
       const loadHandler = () => {
@@ -139,14 +140,14 @@ export class Loader {
       });
     });
     if (preempted) {
-      return null;  // this frame was preempted by another
+      return undefined;  // this frame was preempted by another
     }
 
     if (!this._disabled) {
       frame.removeAttribute('tabindex');
     }
     this._previousFrame = null;
-    return frame;
+    return framePrepare;  // must be resolved by now
   }
 
   /**
