@@ -1,0 +1,9 @@
+{
+  "name": "iframe-loader",
+  "version": "0.1.0",
+  "description": "Swappable iframe loader",
+  "main": "iframe-loader.js",
+  "type": "module",
+  "author": "Sam Thorogood <sam.thorogood@gmail.com>",
+  "license": "Apache-2.0"
+}

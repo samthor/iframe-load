@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+<head>
+
+<script type="module">
+
+  const pagesToLoad = ['frame1.html', 'frame2.html'];
+
+  import {Loader} from '../iframe-loader.js';
+
+  const TestLoader = class extends Loader {
+    static async unload() {
+      console.info('delaying unload by 1s');
+      await new Promise((r) => window.setTimeout(r, 1000));
+    }
+
+    static async prepare() {
+      console.info('delaying loading by 1.5s');
+      await new Promise((r) => window.setTimeout(r, 1500));
+    }
+  };
+
+  const makeLoader = (local) => {
+    const container = Object.assign(document.createElement('div'), {
+      className: 'iframe-container',
+    });
+    const loader = new TestLoader(container);
+    document.body.append(container);
+
+    const prefix = local ? '.' : 'http://127.0.0.1:9000';
+
+    let n = -1;
+    const button = Object.assign(document.createElement('button'), {
+      textContent: 'Load',
+      tabIndex: '-1',
+      onclick() {
+        n = (n + 1) % pagesToLoad.length;
+        loader.load(`${prefix}/${pagesToLoad[n]}`).then((frame) => {
+          if (frame) {
+            console.info('got active frame', frame);
+          }
+        });
+      },
+    });
+    document.body.append(button);
+  };
+
+  makeLoader();
+  makeLoader(true);
+
+</script>
+
+<style type="text/css">
+
+  .iframe-container {
+    height: 200px;
+    position: relative;
+  }
+  .iframe-container iframe {
+    width: 200px;
+    height: 100%;
+    box-sizing: border-box;
+  }
+  .iframe-container iframe:hover {
+    box-shadow: 0 0 4px red;
+  }
+  .iframe-container iframe[tabindex] {
+    pointer-events: none;
+    opacity: 0.5;
+  }
+
+</style>
+
+</head>
+<body>
+
+</body>
+</html>
