@@ -54,7 +54,7 @@ export class Loader {
     this._activeFrame = this.constructor.createFrame(emptyPageHref);
     this._activeHref = /** @type {?string} */ (null);
     this._previousFrame = /** @type {?HTMLIFrameElement} */ (null);
-    this._previousFrameUnload = /** @type {?Promise<*> */ (null);
+    this._previousFrameUnload = /** @type {?Promise<*>} */ (null);
     this._preemptHandler = /** @type {function(): void|null} */ (null);
 
     this._container.appendChild(this._activeFrame);
