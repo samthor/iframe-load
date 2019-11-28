@@ -6,18 +6,18 @@
 
   const pagesToLoad = ['message.html', 'frame1.html', 'frame2.html'];
 
-  import {Loader} from '../iframe-loader.js';
+  import {Loader, LoaderHandler} from '../iframe-loader.js';
 
   const portForFrame = new WeakMap();
 
-  const TestLoader = class extends Loader {
+  const handler = new (class extends LoaderHandler {
     async unload(frame) {
       console.info('delaying unload by 1s');
       await new Promise((r) => window.setTimeout(r, 1000));
     }
 
     async prepare(frame) {
-      return new Promise((resolve) => {
+      const p = new Promise((resolve) => {
         const handler = (ev) => {
           if (ev === null) {
             resolve(null);  // used to cleanup
@@ -34,22 +34,30 @@
           window.setTimeout(() => handler(null), 1000);
         });
       });
+
+      console.info('delaying load by 2s');
+      await new Promise((r) => window.setTimeout(r, 2000));
+
+      return p;
     }
 
-    ready(frame, href, payload) {
-
+    ready(frame, href, port) {
+      if (port === null) {
+        console.info('loaded page without port');
+      } else {
+        port.postMessage({'hello': Math.random()});
+      }
     }
-  };
+  });
 
   const makeLoader = (local) => {
     const container = Object.assign(document.createElement('div'), {
       className: 'iframe-container',
     });
-    const loader = new TestLoader(container);
+    const loader = new Loader(container, handler);
     document.body.append(container);
 
     const prefix = (local ? location.origin : 'http://127.0.0.1:9000') + location.pathname;
-    console.info(prefix);
 
     let n = -1;
     const button = Object.assign(document.createElement('button'), {
@@ -59,17 +67,8 @@
         n = (n + 1) % pagesToLoad.length;
         const u = new URL('./' + pagesToLoad[n], prefix);
 
-        loader.load(u.toString()).then((port) => {
-          if (port === undefined) {
-            return;
-          }
-          if (port !== undefined) {
-            console.info('got active port', port);
-            if (port) {
-              port.postMessage({'hello': 123});
-              portForFrame.add()
-            }
-          }
+        loader.load(u.toString()).catch((err) => {
+          console.error('could not load', err);
         });
       },
     });

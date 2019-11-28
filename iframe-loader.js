@@ -1,20 +1,61 @@
 
 const emptyPageHref = 'data:text/html;base64,';
-const removeNonce = new Object();
+
+/**
+ * @template {T}
+ */
+export class LoaderHandler {
+
+  /**
+   * Delays the removal of a previous frame (and the completion of load).
+   * 
+   * @param {!HTMLIFrameElement} frame
+   * @param {?string} href
+   */
+  async unload(frame, href) {}
+
+  /**
+   * Allows the iframe to be configured. Delays load return, and can be preempted. This is called
+   * before the frame's load event is first received.
+   *
+   * This is passed the href and context specified in `.load()`. To retain or use it in ready() on
+   * this class, return it here.
+   *
+   * @param {!HTMLIFrameElement} frame
+   * @param {?string} href
+   * @param {*} context
+   * @return {!Promise<T>}
+   */
+  async prepare(frame, href, context) {}
+
+  /**
+   * Called after a frame is ready as part of load. If this returns a Promise, it will delay
+   * loading, but not prevent future frame loads.
+   *
+   * @param {!HTMLIFrameElement} frame
+   * @param {?string} href
+   * @param {T} payload
+   */
+  ready(frame, href, payload) {}
+
+}
 
 export class Loader {
 
   /**
    * @param {!HTMLElement} container
+   * @param {!LoaderHandler=} handler
    */
-  constructor(container) {
+  constructor(container, handler = new LoaderHandler()) {
     this._container = container;
+    this._handler = handler;
     this._disabled = false;
 
     this._activeFrame = this.constructor.createFrame(emptyPageHref);
     this._activeHref = emptyPageHref;
     this._previousFrame = null;
     this._previousFrameUnload = Promise.resolve();
+    this._preemptHandler = () => {};
 
     this._container.appendChild(this._activeFrame);
   }
@@ -32,31 +73,6 @@ export class Loader {
     iframe.setAttribute('allow', 'autoplay');  // ... ignored in Safari
     iframe.setAttribute('referrerpolicy', 'no-referrer-when-downgrade');
     return iframe;
-  }
-
-  /**
-   * Delays the removal of a previous frame (and the completion of load).
-   * 
-   * @param {!HTMLIFrameElement} frame
-   * @param {?string} href
-   */
-  static async unload(frame, href) {
-    // does nothing by default
-  }
-
-  /**
-   * Allows the iframe to be configured. Delays load return, and can be preempted. This is called
-   * before the 'load' event is first received.
-   *
-   * @param {!HTMLIFrameElement} frame
-   * @param {?string} href
-   */
-  static async prepare(frame, href) {
-    // does nothing by default
-  }
-
-  ready(frame, href, payload) {
-    
   }
 
   get isLoading() {
@@ -82,21 +98,22 @@ export class Loader {
    * Load a new frame with the given URL.
    *
    * @param {?string} href
+   * @param {*} context
    * @return {!Promise<*>}
    */
-  async load(href) {
+  async load(href, context) {
     if (this._previousFrame) {
-      // If there was still a previousFrame set, then the last activeFrame never loaded. This event
-      // is listened to for below.
+      // If there was still a previousFrame set, then the last activeFrame never loaded, so call
+      // our preempt handler.
       // The previousFrame might already be removed at this point, but it's still non-null.
-      this._activeFrame.dispatchEvent(new CustomEvent('-remove', {detail: removeNonce}));
+      this._preemptHandler();
       this._container.removeChild(this._activeFrame);
     } else {
       // Move the current activeFrame to be our previousFrame.
       this._previousFrame = this._activeFrame;
       this._previousFrame.setAttribute('tabindex', -1);
       window.focus();  // ensure previousFrame isn't focused
-      this._previousFrameUnload = this.constructor.unload(this._previousFrame, this._activeHref);
+      this._previousFrameUnload = this._handler.unload(this._previousFrame, this._activeHref);
 
       // Once done, remove the frame. We block until after this Promise anyway.
       this._previousFrameUnload.then(() => this._container.removeChild(this._previousFrame));
@@ -108,7 +125,7 @@ export class Loader {
     this._activeFrame = frame;
     this._activeHref = href;
 
-    const framePrepare = this.constructor.prepare(frame, href);
+    const framePrepare = this._handler.prepare(frame, href, context);
 
     const preempted = await new Promise((resolve, reject) => {
       const localUnload = this._previousFrameUnload;
@@ -133,11 +150,7 @@ export class Loader {
         frame.removeEventListener('load', loadHandler);
       };
       frame.addEventListener('load', loadHandler);
-      frame.addEventListener('-remove', (ev) => {
-        if (ev.detail === removeNonce) {
-          resolve(true);
-        }
-      });
+      this._preemptHandler = () => resolve(true);
     });
     if (preempted) {
       return undefined;  // this frame was preempted by another
@@ -147,7 +160,9 @@ export class Loader {
       frame.removeAttribute('tabindex');
     }
     this._previousFrame = null;
-    return framePrepare;  // must be resolved by now
+
+    const payload = await framePrepare;
+    return this._handler.ready(frame, href, payload);
   }
 
   /**

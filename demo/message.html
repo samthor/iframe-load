@@ -4,6 +4,10 @@
     window.parent.postMessage(channel.port1, '*', [channel.port1]);
     channel.port2.onmessage = (ev) => {
       console.info('client got message', ev.data);
+      const el = Object.assign(document.createElement('div'), {
+        textContent: JSON.stringify(ev.data),
+      });
+      document.body.append(el);
     };
   }
 </script>
