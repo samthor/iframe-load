@@ -29,8 +29,8 @@ export class LoaderHandler {
   async prepare(frame, href, context) {}
 
   /**
-   * Called after a frame is ready as part of load. If this returns a Promise, it will delay
-   * loading, but not prevent future frame loads.
+   * Called after a frame is ready as part of load. If this returns a Promise, it will delay the
+   * return of `.load()`, but the loader will generally be considered complete.
    *
    * @param {!HTMLIFrameElement} frame
    * @param {?string} href
@@ -52,10 +52,10 @@ export class Loader {
     this._disabled = false;
 
     this._activeFrame = this.constructor.createFrame(emptyPageHref);
-    this._activeHref = emptyPageHref;
-    this._previousFrame = null;
-    this._previousFrameUnload = Promise.resolve();
-    this._preemptHandler = () => {};
+    this._activeHref = /** @type {?string} */ (null);
+    this._previousFrame = /** @type {?HTMLIFrameElement} */ (null);
+    this._previousFrameUnload = /** @type {?Promise<*> */ (null);
+    this._preemptHandler = /** @type {function(): void|null} */ (null);
 
     this._container.appendChild(this._activeFrame);
   }
@@ -75,10 +75,23 @@ export class Loader {
     return iframe;
   }
 
+  /**
+   * @return {boolean} whether the frame is currently being loaded
+   */
   get isLoading() {
     return this._previousFrame !== null;
   }
 
+  /**
+   * @return {string} the most recently loaded href (may still be loading)
+   */
+  get href() {
+    return this._activeHref;
+  }
+
+  /**
+   * @param {boolean} v whether to disable user interaction on the loaded frame
+   */
   set disabled(v) {
     this._disabled = v;
     if (v) {
@@ -90,6 +103,9 @@ export class Loader {
     }
   }
 
+  /**
+   * @return {boolean} whether user interaction is disabled on the loaded frame
+   */
   get disabled() {
     return this._disabled;
   }
@@ -99,7 +115,7 @@ export class Loader {
    *
    * @param {?string} href
    * @param {*} context
-   * @return {!Promise<*>}
+   * @return {!Promise<*|undefined>}
    */
   async load(href, context) {
     if (this._previousFrame) {
@@ -128,6 +144,8 @@ export class Loader {
     const framePrepare = this._handler.prepare(frame, href, context);
 
     const preempted = await new Promise((resolve, reject) => {
+      this._preemptHandler = () => resolve(true);
+
       const localUnload = this._previousFrameUnload;
       let loaded = false;
 
@@ -150,7 +168,6 @@ export class Loader {
         frame.removeEventListener('load', loadHandler);
       };
       frame.addEventListener('load', loadHandler);
-      this._preemptHandler = () => resolve(true);
     });
     if (preempted) {
       return undefined;  // this frame was preempted by another
@@ -160,8 +177,10 @@ export class Loader {
       frame.removeAttribute('tabindex');
     }
     this._previousFrame = null;
+    this._previousFrameUnload = null;
+    this._preemptHandler = null;
 
-    const payload = await framePrepare;
+    const payload = await framePrepare;  // nb. we know this is already complete
     return this._handler.ready(frame, href, payload);
   }
 
@@ -176,7 +195,7 @@ export class Loader {
   }
 
   /**
-   * Maybe cause focus on the active frame, if it's loaded.
+   * Attempt focus on the active frame, if it's loaded.
    */
   focus() {
     if (!this._activeFrame.hasAttribute('tabindex')) {
