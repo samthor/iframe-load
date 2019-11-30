@@ -7,8 +7,14 @@
   const pagesToLoad = ['message.html', 'frame1.html', 'frame2.html'];
 
   import {Loader, LoaderHandler} from '../iframe-loader.js';
+  import buildLink from './link.js';
 
-  const portForFrame = new WeakMap();
+  const linkAttach = buildLink((system, callback) => {
+    console.info('got request for system', system);
+//    callback('sent callback');
+
+    return Math.random();
+  });
 
   const handler = new (class extends LoaderHandler {
     async unload(frame) {
@@ -45,7 +51,7 @@
       if (port === null) {
         console.info('loaded page without port');
       } else {
-        port.postMessage({'hello': Math.random()});
+        linkAttach(port);
       }
     }
   });

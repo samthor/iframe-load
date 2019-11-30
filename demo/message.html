@@ -1,14 +1,26 @@
 <script type="module">
+  import buildLink from './link.js';
+
+  const linkAttach = buildLink((...args) => {
+    console.warn('got unknown from parent', args);
+  });
+
   if (window.parent !== window) {
     const channel = new MessageChannel();
     window.parent.postMessage(channel.port1, '*', [channel.port1]);
-    channel.port2.onmessage = (ev) => {
-      console.info('client got message', ev.data);
+
+    const parent = linkAttach(channel.port2);
+
+    parent('hello', (update) => {
+      console.info('got update via method', update);
+    }).then((response) => {
+      console.info('got response from hello', response);
       const el = Object.assign(document.createElement('div'), {
-        textContent: JSON.stringify(ev.data),
+        textContent: JSON.stringify(response),
       });
       document.body.append(el);
-    };
+    });
+
   }
 </script>
 
