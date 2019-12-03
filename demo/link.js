@@ -90,7 +90,6 @@ class Link {
       console.info('looking up', nonce, wm.get(nonce), nonce === sentNonce);
     });
     console.info(wm);
-    debugger;
 
     const handler = this._pending.get(call);
     if (handler === undefined) {

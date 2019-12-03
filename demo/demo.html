@@ -4,7 +4,7 @@
 
 <script type="module">
 
-  const pagesToLoad = ['message.html', 'frame1.html', 'frame2.html'];
+  const pagesToLoad = ['./frame2.html', 'http://localhost:10999/foo.html', 'http://localhost:1231/foo.html', './message.html', './frame1.html'];
 
   import {Loader, LoaderHandler} from '../iframe-loader.js';
   import buildLink from './link.js';
@@ -71,7 +71,7 @@
       tabIndex: '-1',
       onclick() {
         n = (n + 1) % pagesToLoad.length;
-        const u = new URL('./' + pagesToLoad[n], prefix);
+        const u = new URL(pagesToLoad[n], prefix);
 
         loader.load(u.toString()).catch((err) => {
           console.error('could not load', err);

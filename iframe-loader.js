@@ -1,5 +1,7 @@
 
 const emptyPageHref = 'data:text/html;base64,';
+const defaultFrameTimeout = 4000;
+
 
 /**
  * @template {T}
@@ -58,6 +60,16 @@ export class Loader {
     this._preemptHandler = /** @type {function(): void|null} */ (null);
 
     this._container.appendChild(this._activeFrame);
+  }
+
+  /**
+   * Returns the default time to wait before checking on an unloaded <iframe>. This won't effect
+   * Chrome, which reports a 'load' event even for a network error.
+   *
+   * @return {number} the default time to wait before timeout
+   */
+  static timeout() {
+    return defaultFrameTimeout;
   }
 
   /**
@@ -149,8 +161,64 @@ export class Loader {
       const localUnload = this._previousFrameUnload;
       let loaded = false;
 
+      // After the specified delay, make an additional GET request to the target. This is needed
+      // for browsers which don't give feedback for a failed iframe load (e.g. network failure).
+      // Note that this might spew errors to the console about CORS. This is fine but noisy.
+      // In practice, this is only needed for Safari.
+      const timeout = window.setTimeout(() => {
+        const x = new XMLHttpRequest();
+        x.withCredentials = true;
+
+        // Configure XHR handler. Runs on XHR success or load (to cancel an in-flight XHR).
+        const handler = () => {
+          x.abort();
+          x.onreadystatechange = null;
+          frame.removeEventListener('load', handler);
+
+          // It's possible that the XHR has arrived back after the frame was a success.
+          if (!loaded && frame.parentNode) {
+            frame.contentWindow.location.replace(emptyPageHref);  // causes 'load' event
+          }
+        };
+        frame.addEventListener('load', handler);
+
+        let extraTimeout = 0;
+        x.onreadystatechange = () => {
+          // We expect to see readyState of 4, which means the fetch is 'done' (sucess or failure).
+          // Seeing 2 or 3 would be surprising, since it means the load is working, so give the
+          // final timeout more time to complete. This could occur for a very large HTML fetch,
+          // where both the iframe and the XHR are progressing simultaneously.
+          if (x.readyState !== 4) {
+            window.clearTimeout(extraTimeout);
+            extraTimeout = window.setTimeout(handler, this.constructor.timeout());
+          } else {
+            handler();
+          }
+        };
+        x.open('GET', href);
+        x.send();
+     }, this.constructor.timeout());
+
+      // Firefox supports the non-standard DOMFrameContentLoaded, but only on window. This is
+      // called even if the iframe _fails_ to load.
+      const firefoxLoadHandler = (event) => {
+        if (event.target === frame) {
+          window.setTimeout(() => {
+            // DOMFrameContentLoaded and load should arrive in quick succession. If they have not,
+            // then send a custom load event (to match Chrome's behavior). Because of this, Firefox
+            // is actually aware of iframe load failures (although not used in this library).
+            if (!loaded) {
+              const ce = new CustomEvent('load');  // only for Firefox, don't need polyfill
+              frame.dispatchEvent(ce);
+            }
+          }, 0);
+        }
+      };
+
       const loadHandler = () => {
         if (!loaded) {
+          window.removeEventListener('DOMFrameContentLoaded', firefoxLoadHandler);
+          window.clearTimeout(timeout);  // got load, don't need to do probing XHR
           loaded = true;
 
           // Don't resolve the promise early, as this would prevent the preempt check; wait until
@@ -167,6 +235,8 @@ export class Loader {
         frame.contentWindow.location.replace(emptyPageHref);
         frame.removeEventListener('load', loadHandler);
       };
+
+      window.addEventListener('DOMFrameContentLoaded', firefoxLoadHandler);
       frame.addEventListener('load', loadHandler);
     });
     if (preempted) {
