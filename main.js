@@ -20,8 +20,11 @@ export class LoaderHandler {
    * Allows the iframe to be configured. Delays load return, and can be preempted. This is called
    * before the frame's load event is first received.
    *
-   * This is passed the href and context specified in `.load()`. To retain or use it in ready() on
-   * this class, return it here.
+   * It is guaranteed that the frame will generate a load event, even if preempted. This is not
+   * normally guaranteed by all browsers (e.g. Safari will never notify you of a network failure).
+   *
+   * This is passed the href and context specified in `.load()`. To retain or use the context in
+   * ready() on this class, return it here.
    *
    * @param {!HTMLIFrameElement} frame
    * @param {?string} href
@@ -38,9 +41,9 @@ export class LoaderHandler {
    * @param {?string} href
    * @param {T} payload
    */
-  ready(frame, href, payload) {}
-
+  async prepare(frame, href, context) {}
 }
+
 
 export class Loader {
 
@@ -64,7 +67,9 @@ export class Loader {
 
   /**
    * Returns the default time to wait before checking on an unloaded <iframe>. This won't effect
-   * Chrome, which reports a 'load' event even for a network error.
+   * Chrome or Firefox^, which report a load even on network error.
+   *
+   * ^using a custom Firefox event
    *
    * @return {number} the default time to wait before timeout
    */
@@ -88,9 +93,44 @@ export class Loader {
   }
 
   /**
+   * An unhandled load occured. By default, replace with a blank page, although the load has still
+   * completed at this point.
+   *
+   * @param {!HTMLIFrameElement} frame
+   * @param {?string} href
+   */
+  static unhandledLoad(frame, href) {
+    frame.contentWindow.location.replace(emptyPageHref);
+  }
+
+  /**
+   * Disables the passed frame for user interaction.
+   *
+   * @param {!HTMLIFrameElement} frame
+   */
+  static disableFrame(frame) {
+    if (document.activeElement === frame) {
+      window.focus();
+    }
+    frame.setAttribute('tabindex', '-1');
+    frame.style.pointerEvents = 'none';
+  }
+
+  /**
+   * Enables the passed frame for user interaction.
+   *
+   * @param {!HTMLIFrameElement} frame
+   */
+  static enableFrame(frame) {
+    frame.removeAttribute('tabindex');
+    frame.style.pointerEvents = null;
+  }
+
+  /**
    * @return {boolean} whether the frame is currently being loaded
    */
   get isLoading() {
+    // nb. This might be removed from the page, but is non-null until load is complete
     return this._previousFrame !== null;
   }
 
@@ -107,11 +147,12 @@ export class Loader {
   set disabled(v) {
     this._disabled = v;
     if (v) {
-      window.focus();  // ensure activeFrame isn't focused
-      this._activeFrame.setAttribute('tabindex', -1);
+      this.constructor.disableFrame(this._activeFrame);
+      this._activeFrame.setAttribute('disabled', '');
     } else if (!this.isLoading) {
       // tabindex should remain -1 during loading.
-      this._activeFrame.removeAttribute('tabindex');
+      this.constructor.enableFrame(this._activeFrame);
+      this._activeFrame.removeAttribute('disabled', '');
     }
   }
 
@@ -138,9 +179,9 @@ export class Loader {
       this._container.removeChild(this._activeFrame);
     } else {
       // Move the current activeFrame to be our previousFrame.
+      this.constructor.disableFrame(this._activeFrame);
+      this._activeFrame.removeAttribute('disabled');  // the unloaded frame is never "disabled"
       this._previousFrame = this._activeFrame;
-      this._previousFrame.setAttribute('tabindex', -1);
-      window.focus();  // ensure previousFrame isn't focused
       this._previousFrameUnload = this._handler.unload(this._previousFrame, this._activeHref);
 
       // Once done, remove the frame. We block until after this Promise anyway.
@@ -148,12 +189,16 @@ export class Loader {
     }
 
     const frame = this.constructor.createFrame(href || emptyPageHref);
-    frame.setAttribute('tabindex', -1);
+    this.constructor.disableFrame(frame);
+    if (this._disabled) {
+      frame.setAttribute('disabled', '');
+    }
     this._container.appendChild(frame);
     this._activeFrame = frame;
     this._activeHref = href;
 
     const framePrepare = this._handler.prepare(frame, href, context);
+    let preparePayload;
 
     const preempted = await new Promise((resolve, reject) => {
       this._preemptHandler = () => resolve(true);
@@ -225,15 +270,19 @@ export class Loader {
           // unload is complete, prepare is done, and then call resolve or reject.
           return Promise.resolve()
               .then(() => localUnload)
-              .then(() => framePrepare)
+              .then(() => framePrepare.then((payload) => {
+                // snipe payload on the way through
+                preparePayload = payload;
+                return payload;
+              }))
               .then(() => resolve(false))
               .catch(reject);
         }
 
-        // Don't allow further loads of other pages. We can't prevent them from happening, but nuke
-        // the page once it loads.
-        frame.contentWindow.location.replace(emptyPageHref);
+        // This is an extra load after the initial one managed by iframe-loader. We don't look at
+        // other ways to detect loads, and ignore failed loads by unsupported browsers.
         frame.removeEventListener('load', loadHandler);
+        this.constructor.unhandledLoad(frame, href);
       };
 
       window.addEventListener('DOMFrameContentLoaded', firefoxLoadHandler);
@@ -244,14 +293,13 @@ export class Loader {
     }
 
     if (!this._disabled) {
-      frame.removeAttribute('tabindex');
+      this.constructor.enableFrame(frame);
     }
     this._previousFrame = null;
     this._previousFrameUnload = null;
     this._preemptHandler = null;
 
-    const payload = await framePrepare;  // nb. we know this is already complete
-    return this._handler.ready(frame, href, payload);
+    return this._handler.ready(frame, href, preparePayload);
   }
 
   /**

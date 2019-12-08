@@ -6,7 +6,7 @@
 
   const pagesToLoad = ['./frame2.html', 'http://localhost:10999/foo.html', 'http://localhost:1231/foo.html', './message.html', './frame1.html'];
 
-  import {Loader, LoaderHandler} from '../iframe-loader.js';
+  import {Loader, LoaderHandler} from '../main.js';
   import buildLink from './link.js';
 
   const linkAttach = buildLink((system, callback) => {
@@ -52,6 +52,7 @@
         console.info('loaded page without port');
       } else {
         linkAttach(port);
+        return port;
       }
     }
   });
@@ -63,22 +64,33 @@
     const loader = new Loader(container, handler);
     document.body.append(container);
 
-    const prefix = (local ? location.origin : 'http://127.0.0.1:9000') + location.pathname;
+    const prefix = (local ? location.origin : 'http://127.0.0.1:' + location.port) + location.pathname;
 
     let n = -1;
     const button = Object.assign(document.createElement('button'), {
       textContent: 'Load',
-      tabIndex: '-1',
+      tabIndex: -1,
       onclick() {
         n = (n + 1) % pagesToLoad.length;
         const u = new URL(pagesToLoad[n], prefix);
 
         loader.load(u.toString()).catch((err) => {
           console.error('could not load', err);
+        }).then((result) => {
+          console.warn('loaded href', u.toString(), 'result', result);
         });
       },
     });
     document.body.append(button);
+
+    const disableButton = Object.assign(document.createElement('button'), {
+      textContent: 'Disable',
+      tabIndex: -1,
+      onclick() {
+        loader.disabled = !loader.disabled;
+      },
+    });
+    document.body.append(disableButton);
   };
 
   makeLoader();
@@ -98,11 +110,14 @@
     box-sizing: border-box;
   }
   .iframe-container iframe:hover {
-    box-shadow: 0 0 4px red;
+    box-shadow: 0 0 4px blue;
   }
   .iframe-container iframe[tabindex] {
     pointer-events: none;
     opacity: 0.5;
+  }
+  .iframe-container iframe[disabled] {
+    box-shadow: 0 0 4px red;
   }
 
 </style>
