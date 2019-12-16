@@ -41,7 +41,7 @@ export class LoaderHandler {
    * @param {?string} href
    * @param {T} payload
    */
-  async prepare(frame, href, context) {}
+  async ready(frame, href, payload) {}
 }
 
 
