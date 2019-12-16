@@ -201,8 +201,6 @@ export class Loader {
     let preparePayload;
 
     const preempted = await new Promise((resolve, reject) => {
-      this._preemptHandler = () => resolve(true);
-
       const localUnload = this._previousFrameUnload;
       let loaded = false;
 
@@ -212,7 +210,7 @@ export class Loader {
       // In practice, this is only needed for Safari.
       const timeout = window.setTimeout(() => {
         const x = new XMLHttpRequest();
-        x.withCredentials = true;
+        // nb. We used to set withCredentials here, but it usually generated loud CORS errors.
 
         // Configure XHR handler. Runs on XHR success or load (to cancel an in-flight XHR).
         const handler = () => {
@@ -242,7 +240,7 @@ export class Loader {
         };
         x.open('GET', href);
         x.send();
-     }, this.constructor.timeout());
+      }, this.constructor.timeout());
 
       // Firefox supports the non-standard DOMFrameContentLoaded, but only on window. This is
       // called even if the iframe _fails_ to load.
@@ -260,10 +258,15 @@ export class Loader {
         }
       };
 
+      // We add some global handlers. Configure a shared cleanup handler.
+      const cleanup = () => {
+        window.removeEventListener('DOMFrameContentLoaded', firefoxLoadHandler);
+        window.clearTimeout(timeout);
+      };
+
       const loadHandler = () => {
         if (!loaded) {
-          window.removeEventListener('DOMFrameContentLoaded', firefoxLoadHandler);
-          window.clearTimeout(timeout);  // got load, don't need to do probing XHR
+          cleanup();
           loaded = true;
 
           // Don't resolve the promise early, as this would prevent the preempt check; wait until
@@ -283,6 +286,12 @@ export class Loader {
         // other ways to detect loads, and ignore failed loads by unsupported browsers.
         frame.removeEventListener('load', loadHandler);
         this.constructor.unhandledLoad(frame, href);
+      };
+
+      // Resolve promise if preempted, cleaning up after ourselves.
+      this._preemptHandler = () => {
+        cleanup();
+        resolve(true);
       };
 
       window.addEventListener('DOMFrameContentLoaded', firefoxLoadHandler);
