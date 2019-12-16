@@ -1,6 +1,6 @@
 {
   "name": "iframe-load",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Swappable iframe loader",
   "main": "main.js",
   "type": "module",
