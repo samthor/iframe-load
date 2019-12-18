@@ -123,7 +123,7 @@ export class Loader {
    */
   static enableFrame(frame) {
     frame.removeAttribute('tabindex');
-    frame.style.pointerEvents = null;
+    frame.style.pointerEvents = '';  // empty string for IE11
   }
 
   /**
