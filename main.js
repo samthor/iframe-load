@@ -245,23 +245,20 @@ export class Loader {
       // Firefox supports the non-standard DOMFrameContentLoaded, but only on window. This is
       // called even if the iframe _fails_ to load.
       const firefoxLoadHandler = (event) => {
-        if (event.target === frame) {
-          window.setTimeout(() => {
-            // DOMFrameContentLoaded and load should arrive in quick succession. If they have not,
-            // then send a custom load event (to match Chrome's behavior). Because of this, Firefox
-            // is actually aware of iframe load failures (although not used in this library).
-            if (!loaded) {
-              const ce = new CustomEvent('load');  // only for Firefox, don't need polyfill
-              frame.dispatchEvent(ce);
-            }
-          }, 0);
+        if (event.target !== frame) {
+          return;
         }
-      };
-
-      // We add some global handlers. Configure a shared cleanup handler.
-      const cleanup = () => {
-        window.removeEventListener('DOMFrameContentLoaded', firefoxLoadHandler);
-        window.clearTimeout(timeout);
+        cleanup();  // we're now managing our own cleanup
+        window.setTimeout(() => {
+          // DOMFrameContentLoaded and load should arrive in quick succession (although in
+          // practice they are largely out of sync). If they have not, then send a custom load
+          // event (to match Chrome's behavior). Because of this, Firefox is actually aware of
+          // iframe load failures (although not used in this library).
+          if (!loaded) {
+            const ce = new CustomEvent('load');  // only for Firefox, don't need polyfill
+            frame.dispatchEvent(ce);
+          }
+        }, this.constructor.timeout());  // use long timeout like above
       };
 
       const loadHandler = () => {
@@ -296,6 +293,12 @@ export class Loader {
 
       window.addEventListener('DOMFrameContentLoaded', firefoxLoadHandler);
       frame.addEventListener('load', loadHandler);
+
+      // We add some global handlers. Configure a shared cleanup handler. Intentionally hoisted.
+      function cleanup() {
+        window.removeEventListener('DOMFrameContentLoaded', firefoxLoadHandler);
+        window.clearTimeout(timeout);
+      }
     });
     if (preempted) {
       return undefined;  // this frame was preempted by another
