@@ -10,7 +10,7 @@ export class LoaderHandler {
 
   /**
    * Delays the removal of a previous frame (and the completion of load).
-   * 
+   *
    * @param {!HTMLIFrameElement} frame
    * @param {?string} href
    */
