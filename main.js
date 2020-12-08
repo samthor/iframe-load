@@ -86,7 +86,7 @@ export class Loader {
   static createFrame(href) {
     const iframe = document.createElement('iframe');
     iframe.src = href;
-    iframe.setAttribute('sandbox', 'allow-forms allow-same-origin allow-scripts allow-popups allow-top-navigation allow-top-navigation-by-user-activation');
+    iframe.setAttribute('sandbox', 'allow-forms allow-same-origin allow-scripts allow-popups allow-top-navigation allow-top-navigation-by-user-activation allow-downloads');
     iframe.setAttribute('allow', 'autoplay');  // ... ignored in Safari
     iframe.setAttribute('referrerpolicy', 'no-referrer-when-downgrade');
     return iframe;
